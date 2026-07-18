@@ -3,9 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sistema POS con Escáner de Barras</title>
-    <!-- QuaggaJS para lectura de código de barras -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/quagga/0.12.1/quagga.min.js"></script>
+    <title>Sistema POS con Lector de Barras</title>
     <!-- SheetJS (XLSX) para importar/exportar Excel -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <!-- jsPDF y AutoTable para exportar a PDF -->
@@ -67,7 +65,7 @@
             outline: none;
         }
 
-        input:focus { border-color: #007bff; }
+        input:focus { border-color: #28a745; }
 
         .fila-input-escaner {
             display: flex;
@@ -75,6 +73,19 @@
         }
 
         .fila-input-escaner input { flex: 1; }
+
+        .indicador-lector {
+            padding: 10px 15px;
+            background-color: #28a745;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-size: 0.85rem;
+            font-weight: bold;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
 
         button {
             padding: 10px 15px;
@@ -90,8 +101,6 @@
 
         button:hover { background-color: #0056b3; }
         
-        .btn-escanear { background-color: #6f42c1; }
-        .btn-escanear:hover { background-color: #593399; }
         .btn-venta { background-color: #28a745; width: 100%; padding: 12px; margin-top: 10px;}
         .btn-venta:hover { background-color: #218838; }
 
@@ -111,23 +120,6 @@
             padding: 4px 8px;
             font-size: 0.8rem;
             border-radius: 4px;
-        }
-
-        #camara-escaner {
-            width: 100%;
-            height: 220px;
-            border: 2px dashed #6f42c1;
-            border-radius: 8px;
-            overflow: hidden;
-            display: none;
-            position: relative;
-            background: #000;
-        }
-
-        #camara-escaner video {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
         }
 
         .lista-productos, .lista-carrito {
@@ -224,30 +216,28 @@
 
     <div class="contenedor-principal">
         
-        <!-- PANEL IZQUIERDO: CAPTURA, EDICIÓN, IMPORTACIÓN/EXPORTACIÓN Y CATÁLOGO -->
+        <!-- PANEL IZQUIERDO: CAPTURA, EDICIÓN Y CATÁLOGO -->
         <div class="panel">
-            <h2 id="tituloFormulario">Capturar Producto</h2>
+            <h2 id="tituloFormulario">Registrar / Escanear Producto</h2>
             <form id="formularioProducto">
                 <input type="hidden" id="idProductoEditar" value="">
 
                 <div class="campo">
-                    <label>Código de Barras</label>
+                    <label>Código de Barras (Coloca el cursor aquí y escanea)</label>
                     <div class="fila-input-escaner">
-                        <input type="text" id="inputCodigo" placeholder="Escribe o escanea el código" required>
-                        <button type="button" class="btn-escanear" id="btnIniciarEscaner">📷 Escanear</button>
+                        <input type="text" id="inputCodigo" placeholder="Escanea con la pistola o escribe aquí..." autofocus required>
+                        <div class="indicador-lector">🔌 Lector Listo</div>
                     </div>
                 </div>
-                
-                <div id="camara-escaner"></div>
 
                 <div class="campo">
-                    <label>Nombre del Producto</label>
-                    <input type="text" id="inputNombre" placeholder="Ej. Refresco 600ml" required>
+                    <label>Nombre del Producto (Sólo para nuevos registros)</label>
+                    <input type="text" id="inputNombre" placeholder="Ej. Refresco 600ml">
                 </div>
 
                 <div class="campo">
                     <label>Precio ($)</label>
-                    <input type="number" id="inputPrecio" placeholder="0.00" step="0.01" min="0" required>
+                    <input type="number" id="inputPrecio" placeholder="0.00" step="0.01" min="0">
                 </div>
 
                 <div style="display: flex; gap: 8px;">
@@ -297,7 +287,6 @@
                 🗑 Borrar Historial de Ventas
             </button>
 
-            <!-- Botones de Exportación de Ventas -->
             <div class="export-buttons">
                 <button type="button" class="btn-excel" id="btnExportarExcel">📊 Exportar Ventas a Excel</button>
                 <button type="button" class="btn-pdf" id="btnExportarPDF">📄 Exportar Ventas a PDF</button>
@@ -310,7 +299,6 @@
         let catalogoProductos = JSON.parse(localStorage.getItem("catalogoProductos")) || [];
         let carrito = [];
         let historialVentas = JSON.parse(localStorage.getItem("historialVentas")) || [];
-        let escanerActivo = false;
 
         function guardarCatalogo() {
             localStorage.setItem("catalogoProductos", JSON.stringify(catalogoProductos));
@@ -340,59 +328,44 @@
         const placeholderVentas = document.getElementById('placeholderVentas');
         const txtTotal = document.getElementById('txtTotal');
 
-        // ESCÁNER
-        document.getElementById('btnIniciarEscaner').addEventListener('click', () => {
-            const visorCamara = document.getElementById('camara-escaner');
-            
-            if (escanerActivo) {
-                Quagga.stop();
-                visorCamara.style.display = 'none';
-                escanerActivo = false;
-                return;
-            }
+        // --- LÓGICA PARA EL LECTOR DE CÓDIGO DE BARRAS (PISTOLA) ---
+        inputCodigo.addEventListener('keydown', function(evento) {
+            // Los lectores físicos mandan un "Enter" al terminar de escribir
+            if (evento.key === 'Enter') {
+                evento.preventDefault(); // Evita que se guarde como producto nuevo por error
+                
+                const codigoLeido = inputCodigo.value.trim();
+                if (!codigoLeido) return;
 
-            visorCamara.style.display = 'block';
-            escanerActivo = true;
+                // Buscar si el producto ya existe en el catálogo
+                const prodExistente = catalogoProductos.find(p => p.codigo === codigoLeido);
 
-            Quagga.init({
-                inputStream: {
-                    name: "Live",
-                    type: "LiveStream",
-                    target: visorCamara,
-                    constraints: { width: 480, height: 320, facingMode: "environment" }
-                },
-                decoder: { readers: ["code_128_reader", "ean_reader", "ean_8_reader", "upc_reader"] }
-            }, function(err) {
-                if (err) {
-                    alert("Error al acceder a la cámara o falta de permisos.");
-                    visorCamara.style.display = 'none';
-                    escanerActivo = false;
-                    return;
+                if (prodExistente) {
+                    // Si existe, lo mete directo al carrito de compras
+                    agregarAlCarrito(prodExistente);
+                    
+                    // Efecto visual verde de éxito y limpia el campo
+                    inputCodigo.value = "";
+                    inputCodigo.style.backgroundColor = "#d4edda";
+                    setTimeout(() => inputCodigo.style.backgroundColor = "", 400);
+                } else {
+                    // Si no existe, manda el foco al nombre para poder registrarlo rápidamente
+                    inputNombre.focus();
+                    alert("El código no está en el catálogo. Completa el Nombre y Precio para registrarlo.");
                 }
-                Quagga.start();
-            });
-        });
-
-        Quagga.onDetected((data) => {
-            if (!escanerActivo) return;
-
-            const codigoLeido = data.codeResult.code;
-            inputCodigo.value = codigoLeido;
-            
-            inputCodigo.style.backgroundColor = "#d4edda";
-            setTimeout(() => inputCodigo.style.backgroundColor = "", 500);
-
-            Quagga.stop();
-            document.getElementById('camara-escaner').style.display = 'none';
-            escanerActivo = false;
-
-            const prodExistente = catalogoProductos.find(p => p.codigo === codigoLeido);
-            if (prodExistente) {
-                agregarAlCarrito(prodExistente);
             }
         });
 
-        // FORMULARIO PRODUCTOS
+        // Mantener siempre el foco en el input del código para agilizar escaneos continuos
+        function reenfocarLector() {
+            if (document.activeElement !== inputNombre && document.activeElement !== inputPrecio && document.activeElement !== inputFiltro) {
+                inputCodigo.focus();
+            }
+        }
+        // Cada vez que hagas clic en la pantalla vacía, se auto-enfoca el lector
+        document.body.addEventListener('click', reenfocarLector);
+
+        // FORMULARIO PRODUCTOS (Para registrar o editar)
         formulario.addEventListener('submit', function(evento) {
             evento.preventDefault();
             
@@ -400,6 +373,11 @@
             const nombre = inputNombre.value.trim();
             const precio = parseFloat(inputPrecio.value);
             const codigoAnterior = idProductoEditar.value;
+
+            if (!nombre || isNaN(precio)) {
+                alert("Por favor ingresa un nombre y precio válidos para registrar el producto.");
+                return;
+            }
 
             if (codigoAnterior) {
                 const index = catalogoProductos.findIndex(p => p.codigo === codigoAnterior);
@@ -419,6 +397,7 @@
 
             guardarCatalogo();
             renderizarCatalogo(catalogoProductos);
+            inputCodigo.focus();
         });
 
         function cargarProductoParaEditar(codigo) {
@@ -441,10 +420,11 @@
         function cancelarEdicion() {
             idProductoEditar.value = "";
             formulario.reset();
-            tituloFormulario.textContent = "Capturar Producto";
+            tituloFormulario.textContent = "Registrar / Escanear Producto";
             btnGuardar.textContent = "Guardar en Catálogo";
             btnCancelarEdicion.style.display = "none";
             formulario.classList.remove("modo-edicion");
+            inputCodigo.focus();
         }
 
         // IMPORTAR CATÁLOGO
@@ -473,7 +453,6 @@
                         const libro = XLSX.read(data, { type: 'array' });
                         const primeraHoja = libro.Sheets[libro.SheetNames[0]];
                         const datosExcel = XLSX.utils.sheet_to_json(primeraHoja);
-                        
                         procesarImportacion(datosExcel);
                     } catch (err) {
                         alert("Error al leer el archivo de Excel.");
@@ -481,7 +460,6 @@
                 };
                 lector.readAsArrayBuffer(archivo);
             }
-
             inputImportar.value = "";
         });
 
@@ -524,7 +502,6 @@
             const hoja = XLSX.utils.json_to_sheet(filasCat);
             const libro = XLSX.utils.book_new();
             XLSX.utils.book_append_sheet(libro, hoja, "Catálogo");
-
             XLSX.writeFile(libro, `Catalogo_Productos_${new Date().toISOString().slice(0,10)}.xlsx`);
         });
 
@@ -538,6 +515,7 @@
 
             lista.forEach(producto => {
                 const tarjeta = document.createElement('div');
+                document.getElementById('inputFiltro');
                 tarjeta.className = 'tarjeta-item';
                 tarjeta.innerHTML = `
                     <div class="info-item" title="Haga clic para agregar al carrito">
@@ -550,7 +528,10 @@
                     </div>
                 `;
 
-                tarjeta.querySelector('.info-item').addEventListener('click', () => agregarAlCarrito(producto));
+                tarjeta.querySelector('.info-item').addEventListener('click', () => {
+                    agregarAlCarrito(producto);
+                    inputCodigo.focus();
+                });
                 
                 tarjeta.querySelector('.btn-secundario').addEventListener('click', (e) => {
                     e.stopPropagation();
@@ -645,6 +626,7 @@
             carrito = [];
             renderizarCarrito();
             renderizarVentas();
+            inputCodigo.focus();
         });
 
         function renderizarVentas() {
@@ -693,24 +675,12 @@
                             "Total Venta ($)": v.total
                         });
                     });
-                } else {
-                    filasExcel.push({
-                        "ID Venta": v.id,
-                        "Fecha": v.fecha,
-                        "Código Producto": "-",
-                        "Producto": v.resumenArticulos,
-                        "Precio Unitario ($)": "-",
-                        "Cantidad": "-",
-                        "Subtotal ($)": "-",
-                        "Total Venta ($)": v.total
-                    });
                 }
             });
 
             const hojaTrabajo = XLSX.utils.json_to_sheet(filasExcel);
             const libroTrabajo = XLSX.utils.book_new();
             XLSX.utils.book_append_sheet(libroTrabajo, hojaTrabajo, "Historial de Ventas");
-
             XLSX.writeFile(libroTrabajo, `Reporte_Ventas_${new Date().toISOString().slice(0,10)}.xlsx`);
         });
 
@@ -756,7 +726,6 @@
         // BORRADO SEPARADO
         document.getElementById("btnBorrarCatalogo").addEventListener("click", () => {
             if (!confirm("¿Deseas vaciar TODO el catálogo de productos?")) return;
-
             localStorage.removeItem("catalogoProductos");
             catalogoProductos = [];
             cancelarEdicion();
@@ -765,7 +734,6 @@
 
         document.getElementById("btnBorrarVentas").addEventListener("click", () => {
             if (!confirm("¿Deseas borrar TODO el historial de ventas?")) return;
-
             localStorage.removeItem("historialVentas");
             historialVentas = [];
             renderizarVentas();
