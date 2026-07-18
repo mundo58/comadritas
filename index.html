@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Asistencia Móvil</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; padding: 10px; background-color: #f0f2f5; margin: 0; }
+        h3 { text-align: center; color: #333; margin: 10px 0; }
+        
+        .btn-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 15px; }
+        button { padding: 18px; font-size: 16px; border-radius: 12px; border: none; color: white; font-weight: bold; cursor: pointer; touch-action: manipulation; }
+        
+        .ent { background: #28a745; } 
+        .sal { background: #dc3545; } 
+        .extra { background: #ffc107; color: #333; }
+        .util { background: #6c757d; width: 100%; margin-bottom: 8px; }
+        
+        table { width: 100%; border-collapse: separate; border-spacing: 0; background: white; border-radius: 10px; overflow: hidden; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+        th, td { padding: 12px 8px; text-align: center; border-bottom: 1px solid #eee; font-size: 14px; }
+        th { background: #f8f9fa; color: #555; }
+        .del-btn { background: #fee; padding: 5px 10px; border-radius: 5px; color: #d9534f; }
+    </style>
+</head>
+<body>
+    <h3>Control de Asistencia</h3>
+    <div class="btn-grid">
+        <button class="ent" onclick="registrar('Entrada')">Entrada</button>
+        <button class="extra" onclick="registrar('Salida Comida')">Sal. Comida</button>
+        <button class="extra" onclick="registrar('Entrada Comida')">Ent. Comida</button>
+        <button class="sal" onclick="registrar('Salida')">Salida</button>
+    </div>
+    
+    <button class="util" onclick="exportarExcel()">📥 Exportar a Excel</button>
+    <button class="util" style="background: #333;" onclick="limpiar()">🗑️ Borrar Todo</button>
+    
+    <table id="tabla">
+        <thead><tr><th>Evento</th><th>Fecha</th><th>Hora</th><th>Acción</th></tr></thead>
+        <tbody></tbody>
+    </table>
+
+    <script>
+        function renderizar() {
+            const data = JSON.parse(localStorage.getItem('registros') || '[]');
+            const tbody = document.querySelector('#tabla tbody');
+            tbody.innerHTML = data.map((r, index) => `
+                <tr>
+                    <td>${r.tipo}</td><td>${r.fecha}</td><td>${r.hora}</td>
+                    <td><span class="del-btn" onclick="borrarRegistro(${index})">Eliminar</span></td>
+                </tr>`).join('');
+        }
+
+        function registrar(tipo) {
+            const ahora = new Date();
+            const nuevo = { 
+                tipo, 
+                fecha: ahora.toLocaleDateString(), 
+                hora: ahora.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) 
+            };
+            const data = JSON.parse(localStorage.getItem('registros') || '[]');
+            data.push(nuevo);
+            localStorage.setItem('registros', JSON.stringify(data));
+            renderizar();
+        }
+
+        function borrarRegistro(index) {
+            if(confirm("¿Eliminar este registro?")) {
+                let data = JSON.parse(localStorage.getItem('registros') || '[]');
+                data.splice(index, 1);
+                localStorage.setItem('registros', JSON.stringify(data));
+                renderizar();
+            }
+        }
+
+        function limpiar() {
+            if(confirm("¿Borrar todo el historial?")) {
+                localStorage.removeItem('registros');
+                renderizar();
+            }
+        }
+
+        function exportarExcel() {
+            let data = JSON.parse(localStorage.getItem('registros') || '[]');
+            let csv = "Evento,Fecha,Hora\n" + data.map(r => `${r.tipo},${r.fecha},${r.hora}`).join("\n");
+            let blob = new Blob([csv], { type: 'text/csv' });
+            let url = window.URL.createObjectURL(blob);
+            let a = document.createElement('a');
+            a.href = url; a.download = "asistencia.csv"; a.click();
+        }
+        renderizar();
+    </script>
+</body>
+</html>
