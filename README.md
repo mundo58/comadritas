@@ -1,2 +1,0 @@
-# comadritas
-punto de venta
